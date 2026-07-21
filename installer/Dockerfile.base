@@ -1,3 +1,0 @@
-FROM metersphere/alpine-openjdk21-jre
-
-RUN apk add --no-cache libc6-compat mysql mysql-client redis
