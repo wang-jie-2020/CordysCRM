@@ -11,7 +11,7 @@
 # Maven
 .mvn
 !.mvn/maven-wrapper.properties
-.flattened-pom.xml
+**/.flattened-pom.xml
 
 ############################
 # Logs
