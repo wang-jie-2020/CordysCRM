@@ -79,34 +79,6 @@
                 </configuration>
             </plugin>
 
-            <!-- Maven Antrun 插件，用于复制前端资源到静态目录 -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-antrun-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>main-class-placement</id>
-                        <phase>generate-resources</phase>
-                        <configuration>
-                            <skip>${skipAntRunForJenkins}</skip>
-                            <target>
-                                <!-- 复制移动端资源到静态目录 -->
-                                <copy todir="src/main/resources/static/mobile" failonerror="false">
-                                    <fileset dir="../../frontend/packages/mobile/dist"/>
-                                </copy>
-                                <!-- 复制WEB端资源到静态目录 -->
-                                <copy todir="src/main/resources/static" failonerror="false">
-                                    <fileset dir="../../frontend/packages/web/dist"/>
-                                </copy>
-                            </target>
-                        </configuration>
-                        <goals>
-                            <goal>run</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-
             <!-- Maven Surefire 插件，配置测试执行顺序 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
