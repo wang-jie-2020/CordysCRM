@@ -78,3 +78,5 @@ qywx.json
 
 # Claude Code
 .claude
+
+logs/
