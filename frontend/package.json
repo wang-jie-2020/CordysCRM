@@ -9,7 +9,10 @@
   ],
   "scripts": {
     "build": "pnpm -r run build",
-    "prepare": "cd .. && husky install frontend/.husky"
+    "prepare": "cd .. && husky install frontend/.husky",
+    "dev:web": "pnpm --filter @cordys/web dev",
+    "dev:mobile": "pnpm --filter @cordys/mobile dev",
+    "dev": "pnpm --filter @cordys/web --filter @cordys/mobile dev"
   },
   "keywords": [],
   "author": "",
