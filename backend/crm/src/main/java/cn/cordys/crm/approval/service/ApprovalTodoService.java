@@ -21,6 +21,7 @@ import cn.cordys.crm.form.domain.CustomFormData;
 import cn.cordys.crm.opportunity.domain.Opportunity;
 import cn.cordys.crm.opportunity.domain.OpportunityQuotation;
 import cn.cordys.crm.order.domain.Order;
+import cn.cordys.crm.purchase.domain.Purchase;
 import cn.cordys.crm.system.domain.User;
 import cn.cordys.mybatis.BaseMapper;
 import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
@@ -69,6 +70,8 @@ public class ApprovalTodoService {
     private BaseMapper<Order> orderMapper;
     @Resource
     private BaseMapper<ContractInvoice> invoiceMapper;
+    @Resource
+    private BaseMapper<Purchase> purchaseMapper;
     @Resource
     private BaseMapper<CustomFormData> customFormDataMapper;
     @Resource
@@ -298,6 +301,8 @@ public class ApprovalTodoService {
                     .collect(Collectors.toMap(Order::getId, Order::getName, (prev, next) -> prev)));
             case INVOICE -> resourceNameMap.put(formType, invoiceMapper.selectByIds(distinctIds).stream()
                     .collect(Collectors.toMap(ContractInvoice::getId, ContractInvoice::getName, (prev, next) -> prev)));
+            case PURCHASE -> resourceNameMap.put(formType, purchaseMapper.selectByIds(distinctIds).stream()
+                    .collect(Collectors.toMap(Purchase::getId, Purchase::getName, (prev, next) -> prev)));
             case CUSTOM_FORM -> resourceNameMap.put(formType, customFormDataMapper.selectByIds(distinctIds).stream()
                     .collect(Collectors.toMap(CustomFormData::getId, CustomFormData::getName, (prev, next) -> prev)));
             default -> {
@@ -470,6 +475,13 @@ public class ApprovalTodoService {
         if (!invoiceIds.isEmpty()) {
             resourceIdsByType.put(ApprovalFormTypeEnum.INVOICE, invoiceIds);
         }
+        LambdaQueryWrapper<Purchase> purchaseWrapper = new LambdaQueryWrapper<>();
+        purchaseWrapper.like(Purchase::getName, resourceName);
+        List<String> purchaseIds = purchaseMapper.selectListByLambda(purchaseWrapper).stream()
+                .map(Purchase::getId).filter(StringUtils::isNotBlank).toList();
+        if (!purchaseIds.isEmpty()) {
+            resourceIdsByType.put(ApprovalFormTypeEnum.PURCHASE, purchaseIds);
+        }
         LambdaQueryWrapper<CustomFormData> customFormWrapper = new LambdaQueryWrapper<>();
         customFormWrapper.like(CustomFormData::getName, resourceName);
         List<String> customFormDataIds = customFormDataMapper.selectListByLambda(customFormWrapper).stream()
@@ -496,6 +508,7 @@ public class ApprovalTodoService {
                 case CONTRACT -> List.of("contract");
                 case ORDER -> List.of("order");
                 case INVOICE -> List.of("invoice");
+                case PURCHASE -> List.of("purchase");
                 default -> List.of();
                 };
                 wrapper.in(ApprovalInstance::getType, aliases);

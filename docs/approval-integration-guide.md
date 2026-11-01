@@ -123,19 +123,24 @@ for (ApprovalFormTypeEnum type : new ApprovalFormTypeEnum[] {
 3. `NotificationConstants.TemplateText` 加 `Xxx_TEXT` 字段 + i18n `message.xxx` 模板正文（`MessageTemplateUtils` 按 `{event}_TEXT` 取）
 4. 迁移 dml 往 `sys_message_task` 种一行 `(event, task_type, sys_enable = 1)`——`MessageDetailService` 按 `(module, event)` 查这张表，没配置直接不发
 
-#### 6.4 switch / 分支清单（不补不报错，只静默降级）
+#### 6.4 其他注册点（不补不报错，只静默降级）
 
 | 文件 | 位置 |
 | --- | --- |
-| `approval/constants/ApprovalFormTypeEnum.java` | 新增枚举（prefix / permissionId / value）。`permissionId` 必须是权限树里真实存在的父节点 id（如 `CONTRACT`），否则审批权限下拉为空 |
+| `crm/src/main/resources/permission.json` | 权限树定义，`ApprovalFormTypeEnum.permissionId` 必须与这里的节点 `id` 一致（如 `CONTRACT`），否则审批权限下拉为空 |
+| `common/constants/FormKeyConstants.java` | `@CsPermission(formType = ...)` 用的字符串常量 |
+| `common/constants/PermissionConstants.java` + 迁移 SQL | 读/改/删权限常量 + `sys_role_permission` 种子 |
+| `approval/constants/ApprovalFormTypeEnum.java` | 新增枚举（prefix / permissionId / value） |
 | `ApprovalResourceService` | `getLogModuleOfFormKey`、`getReadPermissionByFormType`、`getFormKeyDisplayName` |
 | `ApprovalFlowService` | `getFlowFormDisplayName` |
 | `ApprovalActionService` | `sendFinishNotice` 的事件 switch + **`getLogModuleOfFormKey`（私有，另有一份实现）** |
 | `ApprovalCommentNoticeService` | 评论通知的 `resourceType` switch（`default` 会静默落到 `Module.APPROVAL`） |
 | `ApprovalTodoService` | `loadResourceNameMap`、按资源名搜索的 type 别名、名称搜索 |
-| `common/constants/PermissionConstants.java` + 迁移 SQL | 读/改/删权限 |
+| `framework/.../LogModule.java` | 日志模块常量（`getLogModuleOfFormKey` 的返回值） |
 
 `getLogModuleOfFormKey` 有两份：`ApprovalResourceService`（public）和 `ApprovalActionService`（private），只补一处会漏日志模块。
+
+注意：上面这些里大部分确实是静默降级，但 `FormKey` 枚举一加，**两处穷举 switch 会直接编译失败**（`McpFormulaController`、`StandardRelatedDetailTabDataHandler`）——这反而是好事，`mvn compile` 会替你揪出来。其余非穷举的地方仍会静静降级。
 
 ### 7. 数据权限
 
@@ -149,13 +154,15 @@ for (ApprovalFormTypeEnum type : new ApprovalFormTypeEnum[] {
 
 审批详情页的查看鉴权走它：参与过审批的人（提审人/审批人/抄送人）直接放行；其他人需要"模块读权限 + 数据权限"。
 
-### 8. 模块表单配置（流程设计器的前提）
+### 8. 模块表单配置（条件、后置字段的硬前提）
 
 条件分支、后置字段更新、字段权限都读 `moduleFormCacheService.getBusinessFormConfig(formType, orgId)`，前端对应 `getDatasourceFieldConfig(formType)`。
 
-也就是你的 formType 需要在 `sys_module_form` 里有一份字段配置（同现有标准模块，走表单设计器或迁移 dml 种一份）。
+也就是你的 formType 必须在 `sys_module_form` + `sys_module_form_blob`（以及 `sys_module_field*`）里有完整一份字段配置。
 
-不做也能跑，但**流程里配不了条件、配不了"审批后改字段"，审批页也没字段可渲染**。
+**没有它不是“少点功能”，而是流程存不进去**：只要 CREATE/UPDATE/DELETE 任一节点配置里出现条件节点或后置字段，保存流程就走 `UserViewService.buildOptionMap` → `ModuleFormService.getModuleFormByKey`，查不到直接抛 404「资源不存在」，而报错完全指不到这一层。
+
+种配置：走前端表单设计器最省事；纯后端验证可直接拷一份现有模块的四个表行（`sys_module_form` / `sys_module_form_blob` / `sys_module_field` / `sys_module_field_blob`）改 `form_key` 和主键。注意 MySQL 里 `varchar` 主键与数字字面量比较会因隐式转换误匹配多行，务必加引号。
 
 ### 9. 前端：直接复用，不用重写审批 UI
 
@@ -190,9 +197,11 @@ for (ApprovalFormTypeEnum type : new ApprovalFormTypeEnum[] {
 1. `FORM_APPROVAL_TABLE` 是 `static` HashMap，加 formType 只能改代码，无配置入口。
 2. 通知事件、日志模块、权限、显示名、待办资源名全是 switch 默认分支 —— 不补不报错，只表现成"待办列表里这行是空的"。注意其中 3 处不是默认分支而是硬校验（6.1 白名单、6.2 四层注册、6.3 通知配置），必须做。
 3. `update_fields`（"改了哪些字段"）依赖 `@OperationLog` 的切面上下文，两个切面的 `@Order` 顺序别动。
-4. 加签**不改** `current_node_id`：加签是 `approval_add_sign_task` 表 + 任务 `sort` 插值（`DEFAULT_SIGN_SORT_STEP = 100`，前插 `parent - 100`、后插取相邻中值或 `+100`），节点 id 始终指向原节点。不需要切后缀；但按节点 id 一股脑捞任务会把同一节点上的加签链路和原任务混在一起，排加签顺序要认 `root_task_id` + `sort`。
+4. 加签会给节点 id 加后缀：常量名是 `SIGN_SPILT`（代码里就是这个拼写）=`-SN`，加签任务的 `nodeId` 变成 `原节点ID-SN序号`。消费方统一 `split("-SN")[0]`（见 `ApprovalActionRequest.getNodeId`、`ApprovalReturnBackRequest`、`ApprovalInstanceService`）；自己写查询时也得先切，否则捞不到原节点配置。
 5. 任务只做标记删除（行还在、状态清空），新写的统计别直接 `count(*)`。
 6. 一切按 `node_round` 过滤，否则会捞到历史轮次的数据。
+7. `update_fields`（“改了哪些字段”）在切面里取 `OperationLogContext`，拿不到时会打 `解析修改字段列表失败, logContext is null` 并让 `update_fields` 为空（只影响 `NOT_EQUAL_ORIGINAL` 这类条件）；`@OperationLog` 与 `@HitApproval` 的 `@Order` 顺序别动。
+8. `/approval-resource/push` 不校验 resourceId 存在性：传空串会落一条 `resource_id=''` 的脏实例与待办，前端拿不到时先拦住。
 
 ## 建议推进顺序
 
@@ -202,6 +211,8 @@ for (ApprovalFormTypeEnum type : new ApprovalFormTypeEnum[] {
 建表 → handler → @HitApproval → 补注册点（6.1~6.4） → 种 module_form
      → 前端流程配置页能选到它并保存成功 → 新建/编辑/删除/驳回回滚全跑通
 ```
+
+顺序有依赖：`module_form` 必须在前端配流程**之前**种好（见第 8 步），否则带条件节点的流程根本存不下去。
 
 跑通后再复制。第二个实体的成本会降到"1 个 handler + 5 处 switch + 1 条前端选项"。
 
@@ -217,10 +228,14 @@ rg "PURCHASE" backend/crm/src/main/java/cn/cordys/crm/system/constants/FieldSour
    backend/crm/src/main/java/cn/cordys/common/service/FieldSourceServiceProvider.java
 # 6.3 通知三常量 + 一条数据
 rg "PURCHASE_APPROVAL" backend/crm/src/main/java/cn/cordys/crm/system/constants/NotificationConstants.java backend/crm/src/main/resources/migration/
+# 6.4 权限树 + formType 常量
+rg "PURCHASE" backend/crm/src/main/resources/permission.json backend/crm/src/main/java/cn/cordys/common/constants/FormKeyConstants.java
 # 6.4 switch 全覆盖：审批包内应命中 5 个文件
 # ApprovalResourceService(3) / ApprovalActionService(2) / ApprovalTodoService(2)
 # ApprovalCommentNoticeService(1) / ApprovalFlowService(1)
 rg -c "case PURCHASE" --glob '*.java' backend/crm/src/main/java
+# 穷举 switch 只能靠编译暴露
+./mvnw -q -f backend/pom.xml -pl framework,crm -am compile -DskipTests
 ```
 
 ## 附：路线 C（松耦合版）

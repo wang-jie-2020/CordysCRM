@@ -146,6 +146,11 @@ public class LogModule {
      */
     public static final String ORDER_INDEX = "ORDER_INDEX";
 
+    /**
+     * 采购单
+     */
+    public static final String PURCHASE_INDEX = "PURCHASE_INDEX";
+
     public static final String APPROVAL_FLOW = "SYSTEM_PROCESS_APPROVAL";
 
     /**

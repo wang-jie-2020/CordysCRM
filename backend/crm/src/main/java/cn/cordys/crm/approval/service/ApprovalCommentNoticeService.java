@@ -65,6 +65,7 @@ public class ApprovalCommentNoticeService {
                 case OPPORTUNITY, QUOTATION -> NotificationConstants.Module.OPPORTUNITY;
                 case CONTRACT, INVOICE -> NotificationConstants.Module.CONTRACT;
                 case ORDER -> NotificationConstants.Module.ORDER;
+                case PURCHASE -> NotificationConstants.Module.PURCHASE;
                 case null, default -> NotificationConstants.Module.APPROVAL;
             };
             Map<String, Object> params = new HashMap<>();

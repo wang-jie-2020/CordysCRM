@@ -164,6 +164,7 @@ public class ApprovalResourceService {
         FORM_APPROVAL_TABLE.put(FormKey.CONTRACT.getKey(), "contract");
         FORM_APPROVAL_TABLE.put(FormKey.INVOICE.getKey(), "contract_invoice");
         FORM_APPROVAL_TABLE.put(FormKey.ORDER.getKey(), "sales_order");
+        FORM_APPROVAL_TABLE.put(FormKey.PURCHASE.getKey(), "purchase");
     }
 
     /**
@@ -403,6 +404,7 @@ public class ApprovalResourceService {
         case CONTRACT -> LogModule.CONTRACT_INDEX;
         case INVOICE -> LogModule.CONTRACT_INVOICE;
         case ORDER -> LogModule.ORDER_INDEX;
+        case PURCHASE -> LogModule.PURCHASE_INDEX;
         default -> null;
         };
     }
@@ -919,6 +921,7 @@ public class ApprovalResourceService {
         case CONTRACT -> Translator.get("module.resource_type.contract");
         case INVOICE -> Translator.get("module.resource_type.invoice");
         case ORDER -> Translator.get("module.resource_type.order");
+        case PURCHASE -> Translator.get("module.resource_type.purchase");
         default -> "";
         };
     }
@@ -1431,6 +1434,7 @@ public class ApprovalResourceService {
         case CONTRACT -> PermissionConstants.CONTRACT_READ;
         case INVOICE -> PermissionConstants.CONTRACT_INVOICE_READ;
         case ORDER -> PermissionConstants.ORDER_READ;
+        case PURCHASE -> PermissionConstants.PURCHASE_READ;
         default -> null;
         };
     }

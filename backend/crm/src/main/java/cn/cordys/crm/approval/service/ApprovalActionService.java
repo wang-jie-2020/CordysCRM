@@ -1664,6 +1664,10 @@ public class ApprovalActionService {
                 module = NotificationConstants.Module.CONTRACT;
                 event = NotificationConstants.Event.INVOICE_APPROVAL;
             }
+            case PURCHASE -> {
+                module = NotificationConstants.Module.PURCHASE;
+                event = NotificationConstants.Event.PURCHASE_APPROVAL;
+            }
             default -> {
                 return;
             }
@@ -1712,6 +1716,9 @@ public class ApprovalActionService {
         }
         case ORDER -> {
             return LogModule.ORDER_INDEX;
+        }
+        case PURCHASE -> {
+            return LogModule.PURCHASE_INDEX;
         }
         default -> {
             return null;

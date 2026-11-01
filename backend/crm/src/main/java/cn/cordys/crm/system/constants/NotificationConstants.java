@@ -39,6 +39,9 @@ public class NotificationConstants {
         //订单管理
         @Schema(description = "message.order")
         String ORDER = "ORDER";
+        //采购单
+        @Schema(description = "message.purchase")
+        String PURCHASE = "PURCHASE";
         //系统
         @Schema(description = "message.system")
         String SYSTEM = "SYSTEM";
@@ -173,6 +176,9 @@ public class NotificationConstants {
 
         @Schema(description = "message.invoice_approval")
         String INVOICE_APPROVAL = "INVOICE_APPROVAL";
+
+        @Schema(description = "message.purchase_approval")
+        String PURCHASE_APPROVAL = "PURCHASE_APPROVAL";
 
         @Schema(description = "message.approval_todo")
         String APPROVAL_TODO = "APPROVAL_TODO";
@@ -360,6 +366,9 @@ public class NotificationConstants {
 
         @Schema(description = "message.approval_result_text")
         String ORDER_APPROVAL_TEXT = "ORDER_APPROVAL_TEXT";
+
+        @Schema(description = "message.approval_result_text")
+        String PURCHASE_APPROVAL_TEXT = "PURCHASE_APPROVAL_TEXT";
 
         @Schema(description = "message.approval_result_text")
         String INVOICE_APPROVAL_TEXT = "INVOICE_APPROVAL_TEXT";

@@ -61,6 +61,7 @@ public class McpFormulaController {
             case CONTRACT_PAYMENT_PLAN -> List.of(PermissionConstants.CONTRACT_PAYMENT_PLAN_READ);
             case CONTRACT_PAYMENT_RECORD -> List.of(PermissionConstants.CONTRACT_PAYMENT_RECORD_READ);
             case ORDER -> List.of(PermissionConstants.ORDER_READ);
+            case PURCHASE -> List.of(PermissionConstants.PURCHASE_READ);
             case PRODUCT, PRICE, FOLLOW_RECORD, FOLLOW_PLAN -> List.of();
             };
             if (!permissions.isEmpty() && permissions.stream().noneMatch(PermissionUtils::hasPermission)) {

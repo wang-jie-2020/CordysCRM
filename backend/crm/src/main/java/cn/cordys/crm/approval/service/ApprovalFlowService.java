@@ -501,7 +501,8 @@ public class ApprovalFlowService {
         for (ApprovalFormTypeEnum type : new ApprovalFormTypeEnum[] {
                 ApprovalFormTypeEnum.CLUE, ApprovalFormTypeEnum.CUSTOMER,
                 ApprovalFormTypeEnum.OPPORTUNITY, ApprovalFormTypeEnum.QUOTATION,
-                ApprovalFormTypeEnum.CONTRACT, ApprovalFormTypeEnum.INVOICE, ApprovalFormTypeEnum.ORDER }) {
+                ApprovalFormTypeEnum.CONTRACT, ApprovalFormTypeEnum.INVOICE, ApprovalFormTypeEnum.ORDER,
+                ApprovalFormTypeEnum.PURCHASE }) {
             if (type.getValue().equals(formType)) {
                 return;
             }
@@ -1695,6 +1696,7 @@ public class ApprovalFlowService {
         case CONTRACT -> Translator.get("module.resource_type.contract");
         case INVOICE -> Translator.get("module.resource_type.invoice");
         case ORDER -> Translator.get("module.resource_type.order");
+        case PURCHASE -> Translator.get("module.resource_type.purchase");
         default -> "";
         };
     }

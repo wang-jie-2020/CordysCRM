@@ -728,5 +728,29 @@
         ]
       }
     ]
+  },
+  {
+    "id": "PURCHASE_MANAGEMENT",
+    "name": "permission.purchase_management.name",
+    "children": [
+      {
+        "id": "PURCHASE",
+        "name": "permission.purchase.name",
+        "permissions": [
+          {
+            "id": "PURCHASE:READ"
+          },
+          {
+            "id": "PURCHASE:ADD"
+          },
+          {
+            "id": "PURCHASE:UPDATE"
+          },
+          {
+            "id": "PURCHASE:DELETE"
+          }
+        ]
+      }
+    ]
   }
 ]

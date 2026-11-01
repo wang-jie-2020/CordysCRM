@@ -23,5 +23,6 @@ public class FormKeyConstants {
     public static final String FOLLOW_RECORD = "record";
     public static final String PRODUCT = "product";
     public static final String PRICE = "price";
+    public static final String PURCHASE = "purchase";
 
 }

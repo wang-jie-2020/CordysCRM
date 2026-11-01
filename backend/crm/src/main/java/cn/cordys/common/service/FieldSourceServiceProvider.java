@@ -15,6 +15,7 @@ import cn.cordys.crm.opportunity.service.OpportunityService;
 import cn.cordys.crm.order.service.OrderService;
 import cn.cordys.crm.product.service.ProductPriceService;
 import cn.cordys.crm.product.service.ProductService;
+import cn.cordys.crm.purchase.service.PurchaseService;
 import cn.cordys.crm.system.constants.FieldSourceType;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
@@ -74,6 +75,8 @@ public class FieldSourceServiceProvider {
     @Lazy
     @Resource
     private CustomFormDataService customFormDataService;
+    @Resource
+    private PurchaseService purchaseService;
 
     @PostConstruct
     public void init() {
@@ -107,6 +110,9 @@ public class FieldSourceServiceProvider {
         sources.put(FieldSourceType.ORDER,
                 new SourceReader(orderService::getSimple,
                         orderService::batchGetSimpleByIds));
+        sources.put(FieldSourceType.PURCHASE,
+                new SourceReader(purchaseService::getSimple,
+                        purchaseService::batchGetSimpleByIds));
         sources.put(FieldSourceType.CONTRACT_PAYMENT_RECORD,
                 new SourceReader(paymentRecordService::getSimple,
                         paymentRecordService::batchGetSimpleByIds));
@@ -125,11 +131,13 @@ public class FieldSourceServiceProvider {
         approvalSources.put(FormKey.CONTRACT.getKey(), sources.get(FieldSourceType.CONTRACT));
         approvalSources.put(FormKey.INVOICE.getKey(), sources.get(FieldSourceType.INVOICE));
         approvalSources.put(FormKey.ORDER.getKey(), sources.get(FieldSourceType.ORDER));
+        approvalSources.put(FormKey.PURCHASE.getKey(), sources.get(FieldSourceType.PURCHASE));
 
         approvalFields.put(FormKey.QUOTATION.getKey(), opportunityQuotationService::getFieldValues);
         approvalFields.put(FormKey.CONTRACT.getKey(), contractService::getFieldValues);
         approvalFields.put(FormKey.INVOICE.getKey(), invoiceService::getFieldValues);
         approvalFields.put(FormKey.ORDER.getKey(), orderService::getFieldValues);
+        approvalFields.put(FormKey.PURCHASE.getKey(), purchaseService::getFieldValues);
     }
 
     /**

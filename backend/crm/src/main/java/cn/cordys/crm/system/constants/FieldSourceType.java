@@ -64,7 +64,11 @@ public enum FieldSourceType {
     /**
      * 发票
      */
-    INVOICE("contract_invoice");
+    INVOICE("contract_invoice"),
+    /**
+     * 采购单
+     */
+    PURCHASE("purchase");
 
     private final String tableName;
 

@@ -23,6 +23,8 @@ public enum ApprovalFormTypeEnum implements ValueEnum<String> {
     INVOICE("INV-APV", "CONTRACT_INVOICE", "invoice"),
     /** 订单 */
     ORDER("ORD-APV", "ORDER", "order"),
+    /** 采购单 */
+    PURCHASE("PUR-APV", "PURCHASE", "purchase"),
     /** 自定义表单（审批 formType 为具体 customFormId，本枚举用于权限/编码等通用配置） */
     CUSTOM_FORM("CFM-APV", "CUSTOM_FORM", "customForm");
 

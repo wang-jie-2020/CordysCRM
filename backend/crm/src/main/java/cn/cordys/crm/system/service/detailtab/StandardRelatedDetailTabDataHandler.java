@@ -133,6 +133,7 @@ public class StandardRelatedDetailTabDataHandler implements DetailTabDataHandler
         case ORDER -> orders(context);
         case FOLLOW_RECORD -> followRecords(context);
         case FOLLOW_PLAN -> followPlans(context);
+        case PURCHASE -> throw new GenericException(Translator.get("module.tab.not_exist"));
         };
     }
 

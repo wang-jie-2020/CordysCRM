@@ -69,7 +69,11 @@ public enum FormKey {
     /**
      * 订单
      */
-    ORDER("order");
+    ORDER("order"),
+    /**
+     * 采购单
+     */
+    PURCHASE("purchase");
 
     private final String key;
 

@@ -187,6 +187,14 @@ public class PermissionConstants {
 
     /*------ end: CONTRACT ------*/
 
+    /*------ start: PURCHASE ------*/
+    public static final String PURCHASE_READ = "PURCHASE:READ";
+    public static final String PURCHASE_ADD = "PURCHASE:ADD";
+    public static final String PURCHASE_UPDATE = "PURCHASE:UPDATE";
+    public static final String PURCHASE_DELETE = "PURCHASE:DELETE";
+
+    /*------ end: PURCHASE ------*/
+
     /*------ start: CONTRACT_CONTRACT_PAYMENT_PLAN_ROLE ------*/
     public static final String CONTRACT_PAYMENT_PLAN_READ = "CONTRACT_PAYMENT_PLAN:READ";
     public static final String CONTRACT_PAYMENT_PLAN_ADD = "CONTRACT_PAYMENT_PLAN:ADD";
