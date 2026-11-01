@@ -35,6 +35,13 @@ CordysCRM 的审批引擎对外只认两个字符串：`formType`（表单类型
 | `approval_status` | 审批状态回写、状态权限过滤 |
 | `approved` | 历史上是否审批通过过；`UPDATE` 降级判定依赖它 |
 
+新表默认值：`approval_status` 用 `NONE`、`approved` 用 `0`。
+
+两个数据侧注意点：
+
+- **存量表补列要回填**：`UPDATE t SET approved = 1 WHERE approval_status = 'APPROVED'`（参考 `V1.7.2_2_1__data.sql`）。不回填的老数据会被当成"从未审批通过过"，编辑时走 CREATE 降级。
+- **`owner` 必须有值**：评论通知靠它找业务负责人（`ApprovalCommentNoticeService`），为空的资源收不到评论提醒。
+
 ### 3. 表名映射（静态块，最容易漏）
 
 `ApprovalResourceService.FORM_APPROVAL_TABLE` 的 `static {}` 里加：
@@ -79,23 +86,66 @@ String getPreUpdateSnapshotData(id, userId, orgId);        // 编辑前快照，
 
 自定义表单用 `formKeyExpr = "{#request.customFormId}"` 代替 `formKey`。
 
-### 6. 补齐所有 switch（不补不报错，只静默降级）
+`formKey` 有默认值 `FormKey.ORDER`（不是必填），写漏了不报错、静默按订单走，注解一定要显式写。
+
+### 6. 补齐注册点
+
+分两类：6.1~6.3 是**硬卡点**（不做直接报错或审批功能不可用）；6.4 的 switch 才是不补就静默降级。
+
+#### 6.1 `validateFormType` 白名单 —— 不补则建流程直接失败
+
+`ApprovalFlowService.validateFormType` 用**硬编码枚举数组**放行标准表单，不走 `ApprovalFormTypeEnum` 遍历，所以 6.4 里加了枚举**不够**：
+
+```java
+for (ApprovalFormTypeEnum type : new ApprovalFormTypeEnum[] {
+        CLUE, CUSTOMER, OPPORTUNITY, QUOTATION, CONTRACT, INVOICE, ORDER }) { ... }
+```
+
+不加进去 → `POST /approval-flow` 把你的 formType 当自定义表单 ID 去库里查，查不到抛 `module.form.illegal`。报错完全指不到这里，是最费时半天的一处。
+
+#### 6.2 `FieldSourceServiceProvider` 是四层注册，不是两行 put
+
+从上到下四层，缺任一层条件分支永远判空：
+
+1. `crm/system/constants/FieldSourceType.java` 加枚举（值 = 业务表名）
+2. `sources.put(FieldSourceType.PURCHASE, new SourceReader(purchaseService::getSimple, purchaseService::batchGetSimpleByIds))`
+3. 业务 service 提供 `getSimple(String)` / `batchGetSimpleByIds(List<String>)` / `getFieldValues(String)` 三个方法
+4. 最后才是 `approvalSources.put(FormKey.PURCHASE.getKey(), sources.get(FieldSourceType.PURCHASE))` + `approvalFields.put(..., purchaseService::getFieldValues)`
+
+条件分支判断和审批后动作都靠它取业务字段（`ModuleFormService.compressResourceDetail`），不注册则条件永远判空。
+
+#### 6.3 审批结果通知：3 个常量 + 1 条数据
+
+`ApprovalActionService.sendFinishNotice` 的 switch 只是第一步，缺下面任一项通知就静默不发（发送方 catch 掉异常，无日志）：
+
+1. `NotificationConstants.Module` 加 module（= `sys_message_task.task_type`）
+2. `NotificationConstants.Event` 加事件
+3. `NotificationConstants.TemplateText` 加 `Xxx_TEXT` 字段 + i18n `message.xxx` 模板正文（`MessageTemplateUtils` 按 `{event}_TEXT` 取）
+4. 迁移 dml 往 `sys_message_task` 种一行 `(event, task_type, sys_enable = 1)`——`MessageDetailService` 按 `(module, event)` 查这张表，没配置直接不发
+
+#### 6.4 switch / 分支清单（不补不报错，只静默降级）
 
 | 文件 | 位置 |
 | --- | --- |
-| `approval/constants/ApprovalFormTypeEnum.java` | 新增枚举（prefix / permissionId / value） |
+| `approval/constants/ApprovalFormTypeEnum.java` | 新增枚举（prefix / permissionId / value）。`permissionId` 必须是权限树里真实存在的父节点 id（如 `CONTRACT`），否则审批权限下拉为空 |
 | `ApprovalResourceService` | `getLogModuleOfFormKey`、`getReadPermissionByFormType`、`getFormKeyDisplayName` |
 | `ApprovalFlowService` | `getFlowFormDisplayName` |
-| `ApprovalActionService` | `sendFinishNotice` 里的事件 switch |
+| `ApprovalActionService` | `sendFinishNotice` 的事件 switch + **`getLogModuleOfFormKey`（私有，另有一份实现）** |
+| `ApprovalCommentNoticeService` | 评论通知的 `resourceType` switch（`default` 会静默落到 `Module.APPROVAL`） |
 | `ApprovalTodoService` | `loadResourceNameMap`、按资源名搜索的 type 别名、名称搜索 |
-| `common/service/FieldSourceServiceProvider.java` | `approvalSources`（名称/详情）+ `approvalFields`（字段值） |
 | `common/constants/PermissionConstants.java` + 迁移 SQL | 读/改/删权限 |
 
-`FieldSourceServiceProvider` 特别关键：条件分支判断和审批后动作都靠它取业务字段（`ModuleFormService.compressResourceDetail`），不注册则条件永远判空。
+`getLogModuleOfFormKey` 有两份：`ApprovalResourceService`（public）和 `ApprovalActionService`（private），只补一处会漏日志模块。
 
 ### 7. 数据权限
 
-实现 `cn.cordys.common.permission.ResourceAccessContextProvider`（`getFormType()` + `getAccessContext()`）。
+实现 `cn.cordys.common.permission.ResourceAccessContextProvider`，三个方法都要（`batchGetOwnerIds` 是抽象方法不是 default，少写编译不过）：
+
+- `getFormType()` —— 返回 formType 字符串
+- `getAccessContext(resourceId, orgId)` —— 返回 `ownerId` + `approvalStatus`，资源不存在返回 `null`
+- `batchGetOwnerIds(resourceIds, orgId)` —— 批量查负责人，返回 `资源id → owner` 映射
+
+组织共享、没有负责人的资源重写 `requiresOwner()` 返回 `false`。
 
 审批详情页的查看鉴权走它：参与过审批的人（提审人/审批人/抄送人）直接放行；其他人需要"模块读权限 + 数据权限"。
 
@@ -114,8 +164,10 @@ String getPreUpdateSnapshotData(id, userId, orgId);        // 编辑前快照，
   - `/approval-resource/{push|revoke|simple-detail|detail|instance-detail}`
   - `/approval-action/{approve|reject|back|revoke|sign|batch-approve|batch-reject}`
   - `/approval-todo/*`
-- **组件**：`frontend/packages/web/src/components/business/crm-approval/crm-approval-detail.vue` 有 `left` 插槽 —— 左边你的单据详情自己渲染，右边（审批链、记录、评论、同意/驳回）整体复用；列表页"审批中"状态用 `crm-approval-popover.vue`。
-- **必改**：`frontend/packages/web/src/config/process.ts` 的 `businessTypeOptions` 加一项（否则管理员建不了流程）；待办点击跳转的目标路由要指到你的页面。
+- **组件**：`frontend/packages/web/src/components/business/crm-approval/components/crm-approval-detail.vue` 有 `left` 插槽 —— 左边你的单据详情自己渲染，右边（审批链、记录、评论、同意/驳回）整体复用；列表页"审批中"状态用同目录下的 `crm-approval-popover.vue`。
+- **必改**：
+  - `frontend/packages/web/src/config/process.ts` 的 `businessTypeOptions` 加一项（否则管理员建不了流程）；待办点击跳转的目标路由要指到你的页面。
+  - `crm-approval-detail.vue` 里的 `approvalStandardFormKeys`（硬编码 `QUOTATION/CONTRACT/ORDER/INVOICE` 的 Set），新标准表单不加进去，加签时你的 formType 会被当成 `customFormId` 传给加签接口。
 - **可选**：`views/system/process/process/components/approval-flow/flow/useConditionFilterConfig.ts` 的 `formTypeConfigMap` 加系统字段过滤器。
 
 ## 必须遵守的时序契约
@@ -136,9 +188,9 @@ String getPreUpdateSnapshotData(id, userId, orgId);        // 编辑前快照，
 ## 已知坑（按遇到概率排序）
 
 1. `FORM_APPROVAL_TABLE` 是 `static` HashMap，加 formType 只能改代码，无配置入口。
-2. 通知事件、日志模块、权限、显示名、待办资源名全是 switch 默认分支 —— 不补不报错，只表现成"待办列表里这行是空的"。
+2. 通知事件、日志模块、权限、显示名、待办资源名全是 switch 默认分支 —— 不补不报错，只表现成"待办列表里这行是空的"。注意其中 3 处不是默认分支而是硬校验（6.1 白名单、6.2 四层注册、6.3 通知配置），必须做。
 3. `update_fields`（"改了哪些字段"）依赖 `@OperationLog` 的切面上下文，两个切面的 `@Order` 顺序别动。
-4. 加签会把 `current_node_id` 加后缀（`SIGN_SPLIT`），任何拿节点 id 查配置的地方先切后缀。
+4. 加签**不改** `current_node_id`：加签是 `approval_add_sign_task` 表 + 任务 `sort` 插值（`DEFAULT_SIGN_SORT_STEP = 100`，前插 `parent - 100`、后插取相邻中值或 `+100`），节点 id 始终指向原节点。不需要切后缀；但按节点 id 一股脑捞任务会把同一节点上的加签链路和原任务混在一起，排加签顺序要认 `root_task_id` + `sort`。
 5. 任务只做标记删除（行还在、状态清空），新写的统计别直接 `count(*)`。
 6. 一切按 `node_round` 过滤，否则会捞到历史轮次的数据。
 
@@ -147,11 +199,29 @@ String getPreUpdateSnapshotData(id, userId, orgId);        // 编辑前快照，
 先挑**一个**实体端到端打通：
 
 ```
-建表 → handler → @HitApproval → 补 switch → 种 module_form
-     → 前端流程配置页能选到它 → 新建/编辑/删除/驳回回滚全跑通
+建表 → handler → @HitApproval → 补注册点（6.1~6.4） → 种 module_form
+     → 前端流程配置页能选到它并保存成功 → 新建/编辑/删除/驳回回滚全跑通
 ```
 
 跑通后再复制。第二个实体的成本会降到"1 个 handler + 5 处 switch + 1 条前端选项"。
+
+## 接入自检
+
+改完后逐条跑一遍，你的 formType 应当出现在每一项的命中结果里（把 `PURCHASE` 换成你的枚举，6.4 的 `case` 也要一并换）：
+
+```bash
+# 6.1 白名单
+rg "new ApprovalFormTypeEnum\[\]" -A 3 backend/crm/src/main/java/cn/cordys/crm/approval/service/ApprovalFlowService.java
+# 6.2 四层注册
+rg "PURCHASE" backend/crm/src/main/java/cn/cordys/crm/system/constants/FieldSourceType.java \
+   backend/crm/src/main/java/cn/cordys/common/service/FieldSourceServiceProvider.java
+# 6.3 通知三常量 + 一条数据
+rg "PURCHASE_APPROVAL" backend/crm/src/main/java/cn/cordys/crm/system/constants/NotificationConstants.java backend/crm/src/main/resources/migration/
+# 6.4 switch 全覆盖：审批包内应命中 5 个文件
+# ApprovalResourceService(3) / ApprovalActionService(2) / ApprovalTodoService(2)
+# ApprovalCommentNoticeService(1) / ApprovalFlowService(1)
+rg -c "case PURCHASE" --glob '*.java' backend/crm/src/main/java
+```
 
 ## 附：路线 C（松耦合版）
 
