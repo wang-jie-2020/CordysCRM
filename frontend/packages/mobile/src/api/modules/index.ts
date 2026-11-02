@@ -11,6 +11,7 @@ import useFollowApi from '@lib/shared/api/modules/follow';
 import useOpportunityApi from '@lib/shared/api/modules/opportunity';
 import useOrderApi from '@lib/shared/api/modules/order';
 import useProductApi from '@lib/shared/api/modules/product';
+import usePurchaseApi from '@lib/shared/api/modules/purchase';
 import useLicenseApi from '@lib/shared/api/modules/system/authorizedManagement';
 import useBusinessApi from '@lib/shared/api/modules/system/business';
 import useLoginApi from '@lib/shared/api/modules/system/login';
@@ -42,6 +43,7 @@ const orderApi = useOrderApi(CDR);
 const agentApi = useAgentApi(CDR);
 const aiApi = useAiApi(CDR);
 const processApi = useProcess(CDR);
+const purchaseApi = usePurchaseApi(CDR);
 
 export const {
   getFollowPlanDetail,
@@ -66,6 +68,15 @@ export const {
   updateFollowPlanComment,
   deleteFollowPlanComment,
 } = followApi;
+
+export const {
+  getPurchaseList,
+  getPurchaseDetail,
+  getPurchaseFormConfig,
+  addPurchase,
+  updatePurchase,
+  deletePurchase,
+} = purchaseApi;
 
 export const {
   getOrderFormConfig,
