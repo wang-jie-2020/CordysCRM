@@ -104,22 +104,46 @@ approval_resource_snapshot   编辑前快照，驳回/撤回时回滚用（只�
 
 ## 2.3 业务表契约：6 个列，2 个语义
 
-引擎不做 ORM，它用 `${sourceTable}` 拼原生 SQL 直接回写你的表（`ExtApprovalInstanceMapper.xml`），列名是硬约定：
+审批模块自己只存"这条单据在走哪个流程"，不存单据内容。要显示单名、要通知人、要判断谁能看，它回头直接拼 SQL 读你的业务表（`ExtApprovalInstanceMapper.xml` 里的 `${sourceTable}`）。中间没有 ORM 兜底，列名写错或列缺失就是 SQL 报错，或者取到空值、功能静默失效。
 
-| 列 | 用途 |
+| 列 | 审批模块拿它做什么 |
 | --- | --- |
 | `id` | 主键 |
-| `name` | 待办/消息/日志里显示的资源名 |
-| `owner` | 评论通知找业务负责人 + 数据权限 |
-| `organization_id` | 多组织隔离 |
+| `name` | 待办、消息、日志里显示的单据名 |
+| `owner` | 单据归属人：评论要通知他，数据权限按他算，负责人变更要认这个字段 |
+| `organization_id` | 查负责人时限定组织，并核对资源属于哪个组织 |
 | `approval_status` | 审批状态回写、状态权限过滤 |
 | `approved` | **历史上是否审批通过过**；编辑时机降级判定依赖它 |
 
 新表默认值：`approval_status = 'NONE'`、`approved = 0`。
 
+### 三列分别在管什么
+
+`name` 管显示。提审时读一次存进审批实例做快照，之后待办、已办、评论列表都读快照，不再查业务表。读不到的后果是列表里显示「资源不存在」；删除路径拼审批意见时没兜底，会直接抛异常。
+
+`owner` 管归属。流程里所有"这条单据跟谁有关"的判断都落到它。别人在单据下评论，除了被 @ 的人，还要额外通知负责人；一个既不是提审人、不是审批人、也没被抄送的人想打开审批详情，系统用 `owner` 套他的数据范围（全部 / 本部门 / 只看自己）来决定能不能看；负责人被批量转移时，系统也要靠这个字段名认出"改的是负责人，该触发重新审批"。
+
+`organization_id` 只做两件事：查负责人时限定组织，以及各业务模块读资源时核对它属于当前组织。对不上就当资源不存在。审批模块自己的实例、任务、评论隔离不用这一列，靠的是审批流版本表上的组织字段。
+
+### 代码里对应的位置
+
+| 列 | 读取位置 |
+| --- | --- |
+| `name` | `ApprovalResourceService.initInstance` 存快照；`ApprovalActionService` 拼日志和通知；删除路径 `HitApprovalAspect` |
+| `owner` | `ApprovalCommentNoticeService.sendNotice`；`hasViewPermission`（详情）和 `hasInstanceViewPermission`（历史实例）→ `ResourceAccessContextProvider` → `DataScopeService`；`batchTransferTriggerApproval` |
+| `organization_id` | `ExtApprovalInstanceMapper.getResourceOwner` 的 where；各 `ResourceAccessContextProvider.getAccessContext` / `batchGetOwnerIds` |
+
+四条容易踩的前提：
+
+- 评论通知只在**新增**评论时找负责人（`notifyOwner=true`），编辑评论只通知本次新增的被 @ 人。通知模板没开（`sys_message_task` 里没有 `APPROVAL` + `APPROVAL_COMMENT_MENTIONED`）就整段不执行。
+- 报价单的表没有 `owner` 列，跳过是写死的 `formKey != FormKey.QUOTATION`，不看 `requiresOwner()`。新实体如果也没这列，评论通知那条 SQL 会报错，然后被 try/catch 吞掉，表现为通知静默不发。省事的做法是新表六列建齐。
+- 查看权限两个入口结论相反：`/detail`、`/simple-detail` 走 `hasViewPermission`，`owner` 为空放行；`/instance-detail`（历史实例）走 `hasInstanceViewPermission`，`owner` 为空且 `requiresOwner()` 为真时不可见。
+- 组织共享资源（如产品）用 `ResourceAccessContextProvider.requiresOwner()` 返回 false 关掉按负责人校验。
+
+补列和写列名时还有三个坑：
+
 - **存量表补列必须回填**：`UPDATE t SET approved = 1 WHERE approval_status = 'APPROVED'`。不回填的老数据，编辑一下就会要求重新审批。
-- **`owner` 必须有值**：评论通知靠它找负责人，为空收不到提醒。
-- 列名写错 = 状态写不进你的表，而且不报错（SQL 更新 0 行）。
+- 状态回写不检查影响行数（`updateApprovalStatus` 返回 void），`id` 对不上就静默 0 行；表名或列名写错是 SQL 报错。
 - 表名映射在 `ApprovalResourceService.FORM_APPROVAL_TABLE`（`static` HashMap，没有配置入口）。
 
 ## 2.4 常用术语
@@ -462,16 +486,24 @@ approved = 0 → 业务表置 PENDING，等手动提审
 
 ### 数据 / 查看权限
 
-进审批详情页的判定顺序（`ApprovalResourceService#hasInstanceViewPermission`）：
+两个入口，方法不同，空 `owner` 的结论也相反：
 
 ```
-1. 组织匹配（实例版本组织 == 当前组织）
-2. 参与人放行：提审人 / 任一节点审批人 / 抄送人
-3. 有该模块 READ 权限
-4. 数据权限：provider.getAccessContext(resourceId) → hasDataPermission(ownerId)
+/detail、/simple-detail → hasViewPermission
+  1. 参与人放行：提审人 / 任一节点审批人 / 抄送人
+  2. 该模块 READ 权限点
+  3. 数据权限：provider.getAccessContext → hasDataPermission(ownerId)
+     owner 为空直接放行
+
+/instance-detail（历史实例）→ hasInstanceViewPermission
+  1. 组织匹配（实例版本组织 == 当前组织）
+  2. 参与人放行
+  3. 该模块 READ 权限点
+  4. provider.requiresOwner() 为真且 owner 为空 → 不可见
+  5. 数据权限：hasDataPermission(ownerId)
 ```
 
-自定义表单走 `CustomFormDataService#hasViewPermission`；没有实例的历史资源则遍历所有 provider 反查归属。
+自定义表单在 `hasInstanceViewPermission` 里走 `CustomFormDataService#hasViewPermission`。`hasViewPermission` 拿不到实例类型时（资源没有审批实例），遍历所有 provider 反查归属。
 
 `ResourceAccessContextProvider` 要实现的四个方法（`batchGetOwnerIds` 是抽象方法，少写编译不过）：
 
@@ -482,7 +514,7 @@ Map<String, String> batchGetOwnerIds(ids, orgId);            // 批量取负责�
 default boolean requiresOwner() { return true; }             // owner 为空是否直接拒绝
 ```
 
-组织共享、没有负责人的资源重写 `requiresOwner()` 返回 `false`。
+产品重写 `requiresOwner()` 返回 `false`；报价单没有 `owner` 列，provider 拿 `createUser` 当 ownerId（与报价列表的 SELF / 部门数据范围一致），没重写 `requiresOwner()`。
 
 ### 流程级动作开关
 
@@ -627,16 +659,16 @@ cc         每个节点的抄送人折叠成 ccNodes
 
 ## 5.3 阶段一：库与配置（只改库，不动代码）
 
-### 1. 建表：6 个列是接口不是建议
+### 1. 建表：6 个列是接口不是建议（各列强弱见 2.3）
 
 ```sql
 CREATE TABLE purchase (
     id              VARCHAR(32) NOT NULL,
     name            VARCHAR(255) NOT NULL,          -- 待办/通知/日志显示名
-    owner           VARCHAR(32) NOT NULL,           -- 负责人：评论通知 + 数据权限
+    owner           VARCHAR(32) NOT NULL,           -- 评论通知 + 数据权限 + 负责人转移条件
     approval_status VARCHAR(50) NOT NULL DEFAULT 'NONE',
     approved        TINYINT(1) DEFAULT 0,           -- 历史上是否通过过
-    organization_id VARCHAR(32) NOT NULL,
+    organization_id VARCHAR(32) NOT NULL,           -- 找负责人时按组织过滤
     create_time BIGINT NOT NULL, update_time BIGINT NOT NULL,
     create_user VARCHAR(32) NOT NULL, update_user VARCHAR(32) NOT NULL,
     PRIMARY KEY (id)
