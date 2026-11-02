@@ -5,23 +5,29 @@
 > 结论基于 `98e174742` 的代码阅读和 `purchase`（采购单）端到端实测。类名/方法名稳定，行号会漂。
 > 通知渠道、模板、多端发送的细节见配套文档 [notification-module-design.md](./notification-module-design.md)。
 
+怎么读这篇：
+
+- 要把自家业务接进审批 → 第五部分，前面四部分当查询手册用
+- 要改引擎，或者查"为什么流转不对" → 第三、四部分
+- 只想找报错原因 → 第六部分
+
 ---
 
 ## 目录
 
 | 部分 | 内容 |
 | --- | --- |
-| [一](#一心智模型) | 心智模型：引擎到底在管什么 |
-| [二](#二数据模型) | 数据模型：设计态 / 运行态 / 业务表契约 |
-| [三](#三运行时) | 运行时：两条主链路、条件、审批人、状态、动作 |
-| [四](#四功能地图) | 功能地图：触发 / 权限 / 通知 / 展示 |
-| [五](#五01-接入) | 0→1 接入：决策 → 库 → 后端 → 自检 → 验收 → 前端 |
+| [一](#一引擎在管什么) | 引擎在管什么：两个字符串、三层职责 |
+| [二](#二数据长什么样) | 数据长什么样：设计态 / 运行态 / 业务表契约 |
+| [三](#三运行时怎么跑) | 运行时怎么跑：两条主链路、条件、审批人、状态、动作 |
+| [四](#四触发权限通知与显示) | 触发、权限、通知、显示 |
+| [五](#五从零接入一个新实体) | 从零接入一个新实体：决策 → 库 → 后端 → 自检 → 验收 → 前端 |
 | [六](#六排查手册) | 排查手册：症状 → 原因、静默失效清单 |
-| [七](#七边界成本与未验证项) | 边界、成本与未验证项 |
+| [七](#七边界与成本) | 边界、成本与未验证项 |
 
 ---
 
-# 一、心智模型
+# 一、引擎在管什么
 
 ## 1.1 引擎只认两个字符串
 
@@ -32,15 +38,9 @@ resourceId  是哪一条业务数据
 
 流程配置、状态机、加签退回撤回、抄送、评论、字段权限、状态权限，全部与业务无关，都建立在 `(formType, resourceId)` 之上。`resourceId` 只是字符串，引擎不需要认识你的表。
 
-职责切三层：
+职责切三层：配置层管流程长什么样（节点顺序、条件分支、审批人算法），运行层管这一单走到哪了（实例、待办、轮次、留痕），适配层管怎么读写你的业务数据。三层之间只靠 `formType` 和 `resourceId` 两个字符串对齐，引擎不需要认识你的表。
 
-| 层 | 负责 | 不负责 |
-| --- | --- | --- |
-| 配置层 | 哪个表单在什么时机走哪个流程、节点顺序、条件分支、审批人怎么算 | 业务数据长什么样 |
-| 运行层 | 实例、待办任务、轮次、流转、加签退回撤回、留痕 | 业务表的具体读法 |
-| 适配层 | 回写业务表状态、编辑前快照与回退、审批后字段更新、WebHook | 流程本身怎么走 |
-
-一个业务对象想接入审批，本质上就是提供一个 `formType` + 一套"怎么读我 / 怎么改我 / 怎么回滚我"的实现。
+一个业务对象想接入审批，本质上就是提供一个 `formType`，外加一套"怎么读我 / 怎么改我 / 怎么回滚我"的实现。
 
 ## 1.2 为什么接入步骤多但都不难
 
@@ -52,7 +52,7 @@ resourceId  是哪一条业务数据
 | `static` Map | `FORM_APPROVAL_TABLE`、`FORM_SERVICE`、`approvalSources` | 不加：查不到 → null → 静默降级 |
 | `switch` / 穷举数组 | 显示名、日志模块、通知事件、待办资源名、权限点 | 不加：走 `default` → 空字符串/空列表 |
 
-**"注册点很多"是这个架构的固有代价，不是设计缺陷。** 你要做的不是"写业务逻辑"，而是"把你的类型登记进引擎的每一张表里"。
+注册点多是这个架构的固有代价，不是设计缺陷。你要做的只是登记：把你的类型登记进引擎的每一张表里。
 
 真正需要写逻辑的只有三处：
 
@@ -64,7 +64,7 @@ resourceId  是哪一条业务数据
 
 ---
 
-# 二、数据模型
+# 二、数据长什么样
 
 ## 2.1 设计态
 
@@ -102,7 +102,7 @@ approval_resource_snapshot   编辑前快照，驳回/撤回时回滚用（只�
 
 任务类型：`NL` 普通审批、`CC` 抄送（只读，不影响流转）、`SN` 加签、`BK` 退回。
 
-## 2.3 业务表契约：6 个列 + 2 个语义
+## 2.3 业务表契约：6 个列，2 个语义
 
 引擎不做 ORM，它用 `${sourceTable}` 拼原生 SQL 直接回写你的表（`ExtApprovalInstanceMapper.xml`），列名是硬约定：
 
@@ -122,7 +122,7 @@ approval_resource_snapshot   编辑前快照，驳回/撤回时回滚用（只�
 - 列名写错 = 状态写不进你的表，而且不报错（SQL 更新 0 行）。
 - 表名映射在 `ApprovalResourceService.FORM_APPROVAL_TABLE`（`static` HashMap，没有配置入口）。
 
-## 2.4 六个术语
+## 2.4 常用术语
 
 | 词 | 含义 | 为什么重要 |
 | --- | --- | --- |
@@ -135,7 +135,7 @@ approval_resource_snapshot   编辑前快照，驳回/撤回时回滚用（只�
 
 ---
 
-# 三、运行时
+# 三、运行时怎么跑
 
 ## 3.1 时序 A：业务写操作 → 有人收到待办
 
@@ -213,7 +213,7 @@ sequenceDiagram
     end
 ```
 
-## 3.3 逐步拆解
+## 3.3 拆开看
 
 ### ① 命中
 
@@ -258,7 +258,7 @@ task.getNodeRound() == getNodeRound(instanceId, nodeId)    // 不是最新轮 �
 
 单人节点不套用或签规则，否则"前加签通过后原审批人任务还在审批中"会被误判通过。
 
-### ⑥ 找下一个真正落地的节点
+### ⑥ 找下一个真正会落地的节点
 
 ```
 取 link 里 from = 当前节点 的下一批
@@ -287,9 +287,9 @@ DELETE 时机 → executeDeleteAction()（ThreadLocal 跳过审批切面）
 
 ## 3.4 条件怎么算
 
-**值从哪来**：`ModuleFormService.compressResourceDetail(formType, resourceId)` 把业务详情 DTO 压成 `List<BaseModuleFieldValue>`，**DTO 属性名就是 fieldId**。所以条件里写 `amount`，DTO 就必须有 `amount` 属性；`sys_module_form` 没有字段配置时条件永远判空。
+条件的值来自 `ModuleFormService.compressResourceDetail(formType, resourceId)`，它把业务详情 DTO 压成 `List<BaseModuleFieldValue>`，**DTO 属性名就是 fieldId**。所以条件里写 `amount`，DTO 就必须有 `amount` 属性；`sys_module_form` 没有字段配置时条件永远判空。
 
-**算子**（`ApprovalFlowService#matchFieldValue`）：
+算子定义在 `ApprovalFlowService#matchFieldValue`：
 
 | 算子 | 语义 |
 | --- | --- |
@@ -301,11 +301,11 @@ DELETE 时机 → executeDeleteAction()（ThreadLocal 跳过审批切面）
 | `EMPTY` / `NOT_EMPTY` | 判空 |
 | `NOT_EQUAL_ORIGINAL` | 只判该字段是否在 `instance.update_fields` 里，不看值 |
 
-**子表条件**：fieldId 写成 `子表fieldId.子字段id`，取父字段的 List 逐行比对，任一行命中即成立。
+子表条件的 fieldId 写成 `子表fieldId.子字段id`，取父字段的 List 逐行比对，任一行命中即成立。
 
-**AND / OR** 由 `CombineSearch.searchMode` 决定，逐条件短路。
+AND / OR 由 `CombineSearch.searchMode` 决定，逐条件短路。
 
-## 3.5 审批人：6 种取人 + 4 层闸门
+## 3.5 审批人怎么算
 
 `resolveApprovers` 按 `approver_type` 分派：
 
@@ -326,9 +326,9 @@ DELETE 时机 → executeDeleteAction()（ThreadLocal 跳过审批切面）
 4. 审批人重复出现    FIRST_ONLY / SEQUENTIAL_ALL / EACH → 结果写进 autoSkipUserIds
 ```
 
-被跳过的不是"消失"，而是生成 `AUTO_APPROVED` 任务 + 一条系统意见的 record（"审批人重复出现，后续节点自动通过"），刻意留痕。
+被跳过的任务不会凭空消失，它会生成一条 `AUTO_APPROVED` 任务，配一条系统意见的 record（"审批人重复出现，后续节点自动通过"），刻意留痕。
 
-一层待办**全部**自动通过时，`handlerNextNodeApproverTasks` 会立刻递归 `approvedProcess`，不会让实例卡在"审批中却没人有任务"。
+一层待办如果**全部**自动通过，`handlerNextNodeApproverTasks` 会立刻递归 `approvedProcess`，不会让实例卡在"审批中却没人有任务"。
 
 ## 3.6 状态迁移
 
@@ -350,18 +350,18 @@ DELETE 时机 → executeDeleteAction()（ThreadLocal 跳过审批切面）
 | 提交人撤销 | `REVOKED` | `REVOKED` |
 | 节点退回 | 不变 | 不变（`current_node_id` 回退） |
 
-**轮次**：`getNextNodeRound` = `max(task.node_round, record.node_round, 0) + 1`。
+轮次由 `getNextNodeRound` 算出：`max(task.node_round, record.node_round, 0) + 1`。
 
-**"删除"是假删**，两种粒度：
+任务从不清物理删除，分两种粒度：
 
 | 方法 | 效果 | 用在 |
 | --- | --- | --- |
 | `loseCurrentNode` | 本轮剩余 `APPROVING` 任务 `status = 'NONE'`（保留轮次） | 节点流转通过后作废其他人待办 |
 | `clearExpiredNode` | 该节点所有轮次的任务与 record `node_round = -1`，审批中任务同时 `status = 'NONE'` | 退回 / 撤回后清掉要重走的节点 |
 
-**加签后缀**：`instance.current_node_id` 可能写成 `nodeId-SN`（常量名是拼错的 `SIGN_SPILT`）。拿它查配置前必须 `split` 掉后缀。
+加签时 `instance.current_node_id` 可能写成 `nodeId-SN`（常量名是拼错的 `SIGN_SPILT`），拿它查配置前必须 `split` 掉后缀。
 
-## 3.7 六个动作
+## 3.7 审批动作
 
 | 动作 | 入口 | 要点 |
 | --- | --- | --- |
@@ -385,9 +385,9 @@ DELETE 时机 → executeDeleteAction()（ThreadLocal 跳过审批切面）
 
 ---
 
-# 四、功能地图
+# 四、触发、权限、通知与显示
 
-## 4.1 触发：七个入口，不是只有注解
+## 4.1 触发入口
 
 | 入口 | 位置 | 时机 | 行为 |
 | --- | --- | --- | --- |
@@ -399,24 +399,24 @@ DELETE 时机 → executeDeleteAction()（ThreadLocal 跳过审批切面）
 | 自定义表单批量版 | `batchEditTriggerApprovalForCustomForm` / `batchDeleteTriggerApprovalForCustomForm` | UPDATE / DELETE | formType 是 `customFormId` |
 | 审批内部回写 | `updateType = approval` | — | 直接放行，不再触发 |
 
-**批量入口的共用内核** `triggerUpdateApproval`：
+批量入口最终都落到 `triggerUpdateApproval`：
 
 ```
 approved = 1 → handler.getPreUpdateSnapshotData() 存快照 → push(UPDATE, updateFields=[变更字段])
 approved = 0 → 业务表置 PENDING，等手动提审
 ```
 
-三个细节：
+实现时有几点容易写错：
 
 - `updateFields` 写什么因入口而异：普通批量编辑传**表单字段 id**，批量转移传**业务字段 key**（`owner`）。节点条件保存的是业务字段 key，传错就匹配不到条件分支。
 - 批量删除是"建实例 + 返回命中审批的 ID"，调用方只删剩下的。
 - 快照必须在业务数据变更之前取，否则驳回回滚回去的是变更后的值。
 
-**事务时序差异**：注解 UPDATE/DELETE 走 `afterCommit` + `REQUIRES_NEW`；批量入口在调用方事务内直接 `push`，所以条件读到的是**变更前**的值（批量编辑触发的流程可能按旧值分支）。
+事务时序上两者不同：注解 UPDATE/DELETE 走 `afterCommit` + `REQUIRES_NEW`；批量入口在调用方事务内直接 `push`，所以条件读到的是变更前的值（批量编辑触发的流程可能按旧值分支）。
 
-**不触发的六种情况**（都不报错）：没有启用中的流程 / 时机开关关着 / 组织 ID 为空 / `updateType=approval` / 已有审批中实例 / 被状态权限过滤掉。
+以下几种情况不会触发，而且都不报错：没有启用中的流程 / 时机开关关着 / 组织 ID 为空 / `updateType=approval` / 已有审批中实例 / 被状态权限过滤掉。
 
-## 4.2 权限：四套，串行叠加
+## 4.2 权限
 
 | 权限 | 配在哪 | 谁消费 | 管什么 |
 | --- | --- | --- | --- |
@@ -444,7 +444,7 @@ approved = 0 → 业务表置 PENDING，等手动提审
 状态有配置但没开      → 需要该权限点对应的角色权限
 ```
 
-两条硬规则：
+有两条硬规则：
 
 - **审批中永远禁止编辑和删除**：`parseStatusPermissions` 读取时把 `APPROVING` 下的 `*:UPDATE` / `*:DELETE` 强制改回 `enabled = false`，配置界面改不动。
 - **导出走独立分支**：`filterResourcesWithExportPermission` 只认带 `EXPORT` 后缀的权限点。
@@ -488,7 +488,7 @@ default boolean requiresOwner() { return true; }             // owner 为空是�
 
 不在权限体系里，是流程配置，但用户感知上就是权限：`submitter_can_revoke`（提交人撤销）、`allow_withdraw`（审批人撤回）、`allow_add_sign`（加签）、`allow_batch_process`（批量同意）、`require_comment`（必填意见）。
 
-## 4.3 通知：四个发送点
+## 4.3 通知
 
 | 场景 | module / event | 收件人 | 代码 |
 | --- | --- | --- | --- |
@@ -513,7 +513,7 @@ default boolean requiresOwner() { return true; }             // owner 为空是�
 
 模板变量固定键：`name`（单据名）、`type`（单据类型名）、`state`（状态文案）、`useTemplate` / `templateKey` / `resourceType` / `resourceId`（评论专用）。
 
-**接入 = 3 个常量 + 1 行数据 + 2 份 i18n**：
+接入要配的东西：
 
 ```
 NotificationConstants.Module.<XX>                         模块（= sys_message_task.task_type）
@@ -525,7 +525,7 @@ i18n 中英文案
 
 最后那行最容易漏：发送方按 `(module, event)` 查配置，查不到既不报错也不发。
 
-## 4.4 展示：五种读模型
+## 4.4 展示
 
 | 读模型 | 接口 | 内容 | 用在哪 |
 | --- | --- | --- | --- |
@@ -553,16 +553,16 @@ cc         每个节点的抄送人折叠成 ccNodes
 
 节点带 `approvalStatus`、`multiApproverMode`、`endNode`、`backNode`、`backReason`，前端只渲染不推断。
 
-### 名称从哪来（两条路，别混）
+### 名称从哪来
 
 | 路径 | 数据源 | 用在哪 |
 | --- | --- | --- |
 | 实例快照 | `approval_instance.resource_name`（提审时写入） | 通知、评论提醒 |
 | 实时批量查 | `ApprovalTodoService#loadResourceNameMap` 按 formType `switch` 查业务表 | 待办五视图 |
 
-所以"待办列表名字空"和"通知里名字空"是两个独立漏项。
+这两条路是分开的，所以"待办列表名字空"和"通知里名字空"是两个独立漏项。
 
-### 前端组件地图
+### 前端组件
 
 | 组件 | 职责 |
 | --- | --- |
@@ -590,11 +590,11 @@ cc         每个节点的抄送人折叠成 ccNodes
 
 ---
 
-# 五、0→1 接入
+# 五、从零接入一个新实体
 
-## 5.1 三个开工决策
+## 5.1 开工决策
 
-**决策 1：选路线**
+### 选路线
 
 | 路线 | 做法 | 前后端 | 代码量 | 适用 |
 | --- | --- | --- | --- | --- |
@@ -604,11 +604,17 @@ cc         每个节点的抄送人折叠成 ccNodes
 
 判断口径：业务表已有（或必然有）独立列、索引、外键、报表需求 → B；字段全动态、临时收意见 → A；系统边界真隔着网络 → C。
 
-**决策 2：第一个实体挑"最小但真实"的**，别一上来挑合同/订单。接入有 15+ 登记点，每点都对应一个"忘了会静默失效"。用简单实体跑通建立清单肌肉记忆；用复杂实体会同时被快照、子表、公式字段干扰，分不清是接入错了还是业务逻辑错了。`purchase` 合适：4 个业务字段、无自定义字段、无快照表、无子表。
+### 第一个实体挑"最小但真实"的
 
-**决策 3：先后端，用 curl 验收完再动前端。** 流程可以完全用 API 建（`POST /approval-flow`），前端只是把审批 UI 摆到页面上。一起调时无法判断是引擎没接上还是页面传错参数。
+别一上来挑合同/订单。接入有 15+ 登记点，每点都对应一个"忘了会静默失效"。用简单实体跑通建立清单肌肉记忆；用复杂实体会同时被快照、子表、公式字段干扰，分不清是接入错了还是业务逻辑错了。
 
-## 5.2 决策 4：哪些能力现在就要
+`purchase` 合适：4 个业务字段、无自定义字段、无快照表、无子表。
+
+### 先后端，用 curl 验收完再动前端
+
+流程可以完全用 API 建（`POST /approval-flow`），前端只是把审批 UI 摆到页面上。一起调时无法判断是引擎没接上还是页面传错参数。
+
+## 5.2 哪些能力现在就得定
 
 | 能力 | 额外成本 | 何时必须要 |
 | --- | --- | --- |
@@ -650,7 +656,7 @@ CREATE TABLE purchase (
 - 走前端表单设计器（真实模块的正路）
 - 纯后端验证：拷一份现有模块的四表行，改 `form_key` 和主键（拷完可用 `POST /module/form/save` 覆盖成干净字段配置，该接口要求行已存在）。注意 MySQL 里 `varchar` 主键与数字字面量比较会因隐式转换误匹配多行，**务必加引号**。
 
-**字段 id 就是取数 DTO 的属性名**：`compressResourceDetail` 把详情 DTO 转 Map，key 当 fieldId。条件里写 `amount`，DTO 就得有 `amount` 属性；业务字段用 `businessKey` 绑定。
+字段 id 就是取数 DTO 的属性名。`compressResourceDetail` 把详情 DTO 转 Map，key 当 fieldId。条件里写 `amount`，DTO 就得有 `amount` 属性；业务字段用 `businessKey` 绑定。
 
 > 验证点：`GET /module/form/config/{formType}` 返回 200 且字段齐全。
 
@@ -705,7 +711,7 @@ void revertToSnapshot(id, userId, orgId, snapshotData);    // 驳回/撤回回�
 String getPreUpdateSnapshotData(id, userId, orgId);        // 编辑前快照
 ```
 
-**六个必须全实现，漏了是静默失效。** 三个实现要点：
+**六个方法必须全实现，漏了是静默失效。**
 
 - `delete()` 就是你的业务删除方法本身，**别在它里面再挂 `@HitApproval`**（引擎用 ThreadLocal 跳过，但那是引擎的保护，不是你的设计）。
 - `getPreUpdateSnapshotData()` 返回的是**更新请求 DTO 的 JSON**，不是实体 JSON；里面要把 `updateType=approval` 带上，`revertToSnapshot()` 解析后原样调 update 才不会二次提审。
@@ -862,7 +868,7 @@ rg -c "case PURCHASE" --glob '*.java' backend/crm/src/main/java
 
 全部复用现有框架，**不要自己写一套审批 UI**。加 `FormDesignKeyEnum` 值会触发 **4 个穷举 `Record`** 的 TS 报错，这是好事：按报错逐个补。
 
-### 15. 注册点（8 处）
+### 14. 前端注册点
 
 | 顺序 | 文件 | 加什么 | 漏了会怎样 |
 | --- | --- | --- | --- |
@@ -877,7 +883,7 @@ rg -c "case PURCHASE" --glob '*.java' backend/crm/src/main/java
 
 第 8 处最反直觉：你只改了 web，但 pre-commit 会在 mobile 上挂 —— mobile 复用 web 的 `crm-form-create/config.ts`，而 `@/api/modules` 在 mobile 下解析到它自己的索引文件。
 
-### 16. API 层三件套 + 模型
+### 15. API 层
 
 以 order 为模板：
 
@@ -894,7 +900,7 @@ rg -c "case PURCHASE" --glob '*.java' backend/crm/src/main/java
 - 详情：**必须是 `FormDetail` 形状**（见 4.4）
 - 新增/更新：前端会把 `{ ...表单值, moduleFields, updateType, approvalTaskId }` 整个提交，后端 DTO 忽略多余字段即可
 
-### 17. 详情页
+### 16. 详情页
 
 抄 `views/order/order/components/detail.vue`，三块都是现成组件：
 
@@ -929,7 +935,7 @@ rg -c "case PURCHASE" --glob '*.java' backend/crm/src/main/java
 - `@saveApproval(callback)`：`await callback()` 后刷新详情，别另发保存请求。
 - 列表页"审批中"用 `crm-approval-popover.vue`；新建表单复用 `CrmFormCreateDrawer`（`:form-key` + `:source-id`）。
 
-### 18. 路由与入口
+### 17. 路由与入口
 
 - "提交审批"按钮调 `/approval-resource/push`（`{ resourceId, formKey }`），前端已封装 `reviewResource()`。
 - 待办列表点击跳转的目标路由要指到你的详情页。
@@ -968,7 +974,7 @@ rg -c "case PURCHASE" --glob '*.java' backend/crm/src/main/java
 | mobile `type:check` 挂了 | `packages/mobile/src/api/modules/index.ts` 没导出 |
 | 日志里一直有 `异步任务异常: sendWebHook` | 没配 WebHook（已 catch，不影响主流程，只是噪音） |
 
-## 6.2 静默失效清单（不报错，只是功能少一块）
+## 6.2 静默失效清单
 
 | 漏项 | 后果 |
 | --- | --- |
@@ -998,7 +1004,7 @@ rg -c "case PURCHASE" --glob '*.java' backend/crm/src/main/java
 
 ---
 
-# 七、边界、成本与未验证项
+# 七、边界与成本
 
 ## 7.1 什么需求不该接入审批
 
