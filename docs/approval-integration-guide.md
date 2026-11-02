@@ -268,18 +268,46 @@ rg -c "case PURCHASE" --glob '*.java' backend/crm/src/main/java
 
 # 阶段五：前端
 
-不接前端也能跑通后端，但真实业务一定要接。**全部复用现有框架，不要自己写一套审批 UI。**
+不接前端也能跑通后端，但真实业务一定要接。**全部复用现有框架，不要自己写一套审批 UI**。
 
-## 15. 四个注册点（几行）
+先记住一个硬约束：`ApprovalFieldEditor` 用的是通用表单组件，它对详情接口的形状有要求（见 16.1），形状不对会渲染空白。
 
-| 文件 | 加什么 |
+## 15. 前端注册点
+
+加 `FormDesignKeyEnum` 值会触发 **4 个穷举 `Record`** 的 TS 报错，这是好事：按报错逐个补就行。
+
+| 顺序 | 文件 | 加什么 |
+| --- | --- | --- |
+| 1 | `lib-shared/enums/formDesignEnum.ts` | `PURCHASE = 'purchase'`，值必须与后端 `FormKey.getKey()` 一致 |
+| 2 | `components/business/crm-form-create/config.ts` | 4 个穷举表：`getFormConfigApiMap`、`createFormApi`、`updateFormApi`、`getFormDetailApiMap`，一个都不能漏 |
+| 3 | `config/process.ts` | `businessTypeOptions` 加一项，否则管理员在流程设计器里选不到 |
+| 4 | `components/business/crm-approval/components/crm-approval-detail.vue` | `approvalStandardFormKeys` 加你的 key，否则加签时 formType 被当 `customFormId` 传 |
+| 5 | `enums/routeEnum.ts` + `router/routes/modules/xxx.ts` | 菜单路由，`meta.permissions` 用你的读权限；`routes/modules` 是自动 glob，新建文件即生效 |
+| 6 | `views/<模块>/locale/{zh-CN,en-US}.ts` | `module.purchase`、`formDesignKey` 相关文案 |
+| 7 | `views/system/process/.../useConditionFilterConfig.ts` | `formTypeConfigMap`（可选，只影响条件面板的系统字段） |
+
+## 16. API 层三件套
+
+按现有模块的目录约定（以 order 为模板）：
+
+| 文件 | 内容 |
 | --- | --- |
-| `frontend/packages/lib-shared/enums/formDesignEnum.ts` | `PURCHASE = 'purchase'`（下面三处都引它） |
-| `frontend/packages/web/src/config/process.ts` | `businessTypeOptions` 加一项，否则管理员在流程设计器里选不到 |
-| `components/business/crm-approval/components/crm-approval-detail.vue` | `approvalStandardFormKeys` 加 `PURCHASE`，否则加签时你的 formType 会被当 `customFormId` 传 |
-| `views/system/process/process/components/approval-flow/flow/useConditionFilterConfig.ts` | `formTypeConfigMap`（可选），只影响条件面板里的系统字段 |
+| `lib-shared/api/requrls/purchase.ts` | URL 常量 |
+| `lib-shared/api/modules/purchase.ts` | `useXxxApi(CDR)`，返回列表/详情/新增/更新/删除/表单配置 |
+| `web/src/api/modules/index.ts` | `const purchaseApi = usePurchaseApi(CDR)` + 解构导出 |
+| `lib-shared/models/purchase.ts` | `PurchaseItem` / `SaveXxxParams` |
 
-## 16. 详情页：抄 `views/order/order/components/detail.vue`
+### 16.1 列表与详情接口的最小形状
+
+- 列表：`{ current, pageSize, list, total }`（`CommonList<T>`）
+- 详情：**必须是 `FormDetail` 形状** —— `{ moduleFields: [], ...业务字段平铺 }`。少 `moduleFields` TS 会报错，业务字段名必须与 `sys_module_form` 里的 `businessKey` 对得上
+- 新增/更新：前端会把 `{ ...表单值, moduleFields, updateType, approvalTaskId }` 整个提交；后端 DTO 忽略多余字段即可
+
+### 16.2 权限
+
+菜单与按钮走登录返回的 `permissionIds`；`admin` 用户前端 `isAdmin` 直接放行、后端 `PermissionUtils` 也直通，所以本地用 admin 测会看不到"无权限"问题。
+
+## 17. 详情页：抄 `views/order/order/components/detail.vue`
 
 结构就三块，都是现成组件：
 
@@ -300,6 +328,7 @@ rg -c "case PURCHASE" --glob '*.java' backend/crm/src/main/java
       :task-node="taskNode"
       :set-loading="setLoading"
       :set-editing="setEditing"
+      @init="..."
       @saved="..."
     />
   </template>
@@ -308,15 +337,18 @@ rg -c "case PURCHASE" --glob '*.java' backend/crm/src/main/java
 
 - 右侧（审批链、记录、评论、同意/驳回）全在 `crm-approval-detail.vue` 里，不用管。
 - 左侧插槽直接上 `components/business/crm-approval/components/approvalFieldEditor.vue`，它已经把详情/编辑切换、字段权限、审批态保存（`updateType: 'approval'`）都包好了。
+- **插槽就是四个参数**：`fieldPermissions`（引擎下发的字段权限）、`taskNode`（当前待办节点）、`setLoading`、`setEditing`。插槽参数全部原样透传给 `ApprovalFieldEditor` 即可，不要自己计算。
 - 有快照表的模块才需要 `description-form-key`（如 `ORDER_SNAPSHOT`）。
-- 列表页"审批中"状态用同目录的 `crm-approval-popover.vue`。
-- 要自己渲染左侧而非用表单详情，才手写 `#left` 插槽 —— 插槽参数就是上面那四个。
+- `@saveApproval(callback)` 的用法：`await callback()` 后刷新详情，别自己发保存请求。
+- 列表页"审批中"状态用同目录的 `crm-approval-popover.vue`；新建表单直接复用 `CrmFormCreateDrawer`（`:form-key` + `:source-id`）。
 
-## 17. 路由与入口
+## 18. 路由与入口
 
-- "提交审批"按钮调 `/approval-resource/push`（`{ resourceId, formKey }`）。
+- "提交审批"按钮调 `/approval-resource/push`（`{ resourceId, formKey }`），前端已有封装 `reviewResource()`。
 - 待办列表点击跳转的目标路由要指到你的详情页。
 - 其余审批 API 全部复用：`/approval-flow/*`、`/approval-resource/*`、`/approval-action/*`、`/approval-todo/*`。
+
+> 验证点：`pnpm --filter @cordys/web type:check` 与 `npm run lint`（在 `packages/web` 下）都干净，vite 对新增模块返回 200 无 transform error。
 
 ---
 
@@ -346,6 +378,15 @@ rg -c "case PURCHASE" --glob '*.java' backend/crm/src/main/java
 | --- | --- | --- | --- |
 | 线索/客户/商机/报价单/合同/发票/订单 | `clue`…`order` | 报价单/合同/发票/订单有 | 全量接入，可当模板 |
 | 自定义表单 | 具体 `customFormId` | 无 | `FormKey.ofKey` 返回 null 的分支 |
-| 采购单（验证用） | `purchase` | 无 | 最小可跑样例，见 `crm/purchase/` 与迁移 `1.9.6` |
+| 采购单（验证用） | `purchase` | 无 | 最小可跑样例，前后端全链，见 `crm/purchase/`、迁移 `1.9.6`、`views/purchase/` |
 
-第一个实体的实际工作量（`purchase` 实测）：1 张表 + 2 个迁移 + 6 个 Java 文件 + 约 15 处注册点改动 + 1 条 `sys_message_task` 数据。第二个实体复制时只改业务部分。
+第一个实体的实际工作量（`purchase` 实测）：
+
+| 部分 | 文件数 | 说明 |
+| --- | --- | --- |
+| 迁移 | 2 | 建表 + 权限/消息任务 dml |
+| 后端 | 7 | domain、3 个 DTO、service、controller、provider |
+| 后端注册点 | ~15 处 | 见阶段二清单 |
+| 前端 | 12 | 4 个穷举 Record、路由、页面、API 层三件套 |
+
+第二个实体复制时只改业务部分，注册点照清单过一遍即可。
