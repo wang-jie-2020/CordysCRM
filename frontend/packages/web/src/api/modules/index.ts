@@ -11,6 +11,7 @@ import useHomeApi from '@lib/shared/api/modules/home';
 import useOpportunityApi from '@lib/shared/api/modules/opportunity';
 import useOrderApi from '@lib/shared/api/modules/order';
 import useProductApi from '@lib/shared/api/modules/product';
+import usePurchaseApi from '@lib/shared/api/modules/purchase';
 import useSysApi from '@lib/shared/api/modules/sys';
 import useLicenseApi from '@lib/shared/api/modules/system/authorizedManagement';
 import useBusinessApi from '@lib/shared/api/modules/system/business';
@@ -62,8 +63,18 @@ const contractApi = useContractApi(CDR);
 const orderApi = useOrderApi(CDR);
 const customFormApi = useCustomFormApi(CDR);
 const processApi = useProcessApi(CDR);
+const purchaseApi = usePurchaseApi(CDR);
 
 export const { getChangeLogPage } = changeLogApi;
+
+export const {
+  getPurchaseList,
+  getPurchaseDetail,
+  getPurchaseFormConfig,
+  addPurchase,
+  updatePurchase,
+  deletePurchase,
+} = purchaseApi;
 
 export const {
   addCustomForm,

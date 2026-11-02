@@ -2,11 +2,13 @@ package cn.cordys.crm.purchase.controller;
 
 import cn.cordys.common.constants.FormKeyConstants;
 import cn.cordys.common.constants.PermissionConstants;
+import cn.cordys.common.pager.Pager;
 import cn.cordys.common.permission.CsPermission;
 import cn.cordys.context.OrganizationContext;
 import cn.cordys.crm.purchase.domain.Purchase;
 import cn.cordys.crm.purchase.dto.PurchaseGetResponse;
 import cn.cordys.crm.purchase.dto.request.PurchaseAddRequest;
+import cn.cordys.crm.purchase.dto.request.PurchasePageRequest;
 import cn.cordys.crm.purchase.dto.request.PurchaseUpdateRequest;
 import cn.cordys.crm.purchase.service.PurchaseService;
 import cn.cordys.security.SessionUtils;
@@ -20,6 +22,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 @Tag(name = "采购单")
@@ -50,6 +54,12 @@ public class PurchaseController {
     @Operation(summary = "采购单详情")
     public PurchaseGetResponse get(@PathVariable String id) {
         return purchaseService.get(id);
+    }
+
+    @PostMapping("/page")
+    @Operation(summary = "采购单列表")
+    public Pager<List<PurchaseGetResponse>> page(@RequestBody PurchasePageRequest request) {
+        return purchaseService.page(request, OrganizationContext.getOrganizationId());
     }
 
     @GetMapping("/delete/{id}")

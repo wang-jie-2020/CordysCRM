@@ -427,6 +427,7 @@
     FormDesignKeyEnum.CONTRACT,
     FormDesignKeyEnum.ORDER,
     FormDesignKeyEnum.INVOICE,
+    FormDesignKeyEnum.PURCHASE,
   ]);
   const emit = defineEmits<{
     (

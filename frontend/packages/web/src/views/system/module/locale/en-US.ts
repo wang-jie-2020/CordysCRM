@@ -103,6 +103,7 @@ export default {
   'module.agent': 'Agent',
   'module.contract': 'Contract',
   'module.order': 'Order',
+  'module.purchase': 'Purchase',
   'module.order.stateFlow': 'Order Status Flow',
   'module.order.state': 'Order Status',
   'module.order.stateType': 'Status Type',

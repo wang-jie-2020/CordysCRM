@@ -230,6 +230,10 @@ export const businessTypeOptions = [
     label: t('module.order'),
     value: FormDesignKeyEnum.ORDER,
   },
+  {
+    label: t('module.purchase'),
+    value: FormDesignKeyEnum.PURCHASE,
+  },
 ];
 
 export function createApprovalBusinessTypeOptions(

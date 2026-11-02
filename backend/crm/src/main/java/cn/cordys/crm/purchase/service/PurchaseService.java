@@ -5,6 +5,8 @@ import cn.cordys.aspectj.constants.LogModule;
 import cn.cordys.aspectj.constants.LogType;
 import cn.cordys.common.constants.FormKey;
 import cn.cordys.common.exception.GenericException;
+import cn.cordys.common.pager.PageUtils;
+import cn.cordys.common.pager.Pager;
 import cn.cordys.common.uid.IDGenerator;
 import cn.cordys.common.util.BeanUtils;
 import cn.cordys.common.util.CommonBeanFactory;
@@ -20,8 +22,12 @@ import cn.cordys.crm.approval.handler.ApprovalResourceHandler;
 import cn.cordys.crm.purchase.domain.Purchase;
 import cn.cordys.crm.purchase.dto.PurchaseGetResponse;
 import cn.cordys.crm.purchase.dto.request.PurchaseAddRequest;
+import cn.cordys.crm.purchase.dto.request.PurchasePageRequest;
 import cn.cordys.crm.purchase.dto.request.PurchaseUpdateRequest;
 import cn.cordys.mybatis.BaseMapper;
+import cn.cordys.mybatis.lambda.LambdaQueryWrapper;
+import com.github.pagehelper.Page;
+import com.github.pagehelper.PageHelper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -104,6 +110,18 @@ public class PurchaseService implements ApprovalResourceHandler {
 
     public PurchaseGetResponse get(String id) {
         return getSimple(id);
+    }
+
+    public Pager<List<PurchaseGetResponse>> page(PurchasePageRequest request, String orgId) {
+        Page<Object> page = PageHelper.startPage(request.getCurrent(), request.getPageSize());
+        LambdaQueryWrapper<Purchase> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Purchase::getOrganizationId, orgId)
+                .like(Purchase::getName, request.getKeyword())
+                .orderByDesc(Purchase::getCreateTime);
+        List<PurchaseGetResponse> rows = purchaseMapper.selectListByLambda(wrapper).stream()
+                .map(purchase -> BeanUtils.copyBean(new PurchaseGetResponse(), purchase))
+                .toList();
+        return PageUtils.setPageInfo(page, rows);
     }
 
     public PurchaseGetResponse getSimple(String id) {

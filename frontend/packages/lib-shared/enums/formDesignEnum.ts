@@ -31,6 +31,7 @@ export enum FormDesignKeyEnum {
   OPPORTUNITY_QUOTATION_SNAPSHOT = 'quotationSnapshot', // 商机快照报价单
   BUSINESS_TITLE = 'businessTitle', // 工商抬头(数据源，无表单配置入口)
   ORDER = 'order', // 订单
+  PURCHASE = 'purchase', // 采购单
   ORDER_SNAPSHOT = 'orderSnapshot', // 订单快照
   CONTRACT_ORDER = 'contractOrder', // 合同下的订单
   CUSTOMER_ORDER = 'customerOrder', // 客户下的订单

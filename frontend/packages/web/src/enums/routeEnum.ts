@@ -45,6 +45,11 @@ export enum OrderRouteEnum {
   ORDER_INDEX = 'orderIndex',
 }
 
+export enum PurchaseRouteEnum {
+  PURCHASE = 'purchase',
+  PURCHASE_INDEX = 'purchaseIndex',
+}
+
 export enum ProductRouteEnum {
   PRODUCT = 'product',
   PRODUCT_PRO = 'productPro',
