@@ -285,6 +285,7 @@ rg -c "case PURCHASE" --glob '*.java' backend/crm/src/main/java
 | 5 | `enums/routeEnum.ts` + `router/routes/modules/xxx.ts` | 菜单路由，`meta.permissions` 用你的读权限；`routes/modules` 是自动 glob，新建文件即生效 |
 | 6 | `views/<模块>/locale/{zh-CN,en-US}.ts` | `module.purchase`、`formDesignKey` 相关文案 |
 | 7 | `views/system/process/.../useConditionFilterConfig.ts` | `formTypeConfigMap`（可选，只影响条件面板的系统字段） |
+| 8 | `packages/mobile/src/api/modules/index.ts` | **mobile 也要导出一份采购单 API**：mobile 复用 web 的 `crm-form-create/config.ts`，而 `@/api/modules` 在 mobile 下解析到它自己的索引文件，不导出就过不了 mobile 的 `type:check` |
 
 ## 16. API 层三件套
 
