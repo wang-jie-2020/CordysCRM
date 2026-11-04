@@ -1694,6 +1694,25 @@ public class ModuleFormService {
     }
 
     /**
+     * 采购单是后加的表单。已有环境补一条明细子表，id 固定为 lines。
+     */
+    public void initPurchaseLinesField() {
+        initUpgradeForm();
+        ModuleField probe = new ModuleField();
+        probe.setInternalKey("purchaseLines");
+        if (moduleFieldMapper.selectOne(probe) != null) {
+            return;
+        }
+        ModuleForm example = new ModuleForm();
+        example.setFormKey(FormKey.PURCHASE.getKey());
+        ModuleForm form = moduleFormMapper.selectOne(example);
+        if (form == null) {
+            return;
+        }
+        initFormFields(Map.of(FormKey.PURCHASE.getKey(), form.getId()));
+    }
+
+    /**
      * 初始化线索转联系人表单联动规则
      */
     @SuppressWarnings("unchecked")
@@ -1874,7 +1893,11 @@ public class ModuleFormService {
                     if (initField.containsKey(SUB_FIELDS)) {
                         List<BaseField> subFields = JSON.parseArray(JSON.toJSONString(initField.get(SUB_FIELDS)),
                                 BaseField.class);
-                        subFields.forEach(subField -> subField.setId(IDGenerator.nextStr()));
+                        subFields.forEach(subField -> {
+                            if (StringUtils.isBlank(subField.getId())) {
+                                subField.setId(IDGenerator.nextStr());
+                            }
+                        });
                         initField.put(SUB_FIELDS, subFields);
                     }
                     ModuleFieldBlob fieldBlob = new ModuleFieldBlob();
@@ -1940,8 +1963,14 @@ public class ModuleFormService {
             Map<String, String> controlKeyPreMap) {
         ModuleField field = new ModuleField();
         field.setInternalKey(fieldMap.get("internalKey").toString());
-        field.setId(controlKeyPreMap.containsKey(field.getInternalKey()) ? controlKeyPreMap.get(field.getInternalKey())
-                : IDGenerator.nextStr());
+        Object presetId = fieldMap.get("id");
+        if (presetId != null && StringUtils.isNotBlank(presetId.toString())) {
+            // 采购明细把 id 钉成 lines，条件名才能写成 lines.qty，而不是随机 id
+            field.setId(presetId.toString());
+        } else {
+            field.setId(controlKeyPreMap.containsKey(field.getInternalKey()) ? controlKeyPreMap.get(field.getInternalKey())
+                    : IDGenerator.nextStr());
+        }
         field.setFormId(formId);
         field.setType(fieldMap.get("type").toString());
         field.setName(fieldMap.get("name").toString());

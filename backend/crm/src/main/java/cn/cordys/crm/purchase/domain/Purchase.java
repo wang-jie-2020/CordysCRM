@@ -20,6 +20,9 @@ public class Purchase extends BaseModel {
     @Schema(description = "金额")
     private BigDecimal amount;
 
+    @Schema(description = "采购明细 JSON")
+    private String lines;
+
     @Schema(description = "审批状态")
     private String approvalStatus;
 

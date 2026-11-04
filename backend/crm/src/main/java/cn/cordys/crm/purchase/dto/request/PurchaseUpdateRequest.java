@@ -7,6 +7,8 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
 
 @Data
 public class PurchaseUpdateRequest {
@@ -26,6 +28,9 @@ public class PurchaseUpdateRequest {
 
     @Schema(description = "金额")
     private BigDecimal amount;
+
+    @Schema(description = "采购明细")
+    private List<Map<String, Object>> lines;
 
     /**
      * 审批回退时置为 {@link ApprovalResourceUpdateType#APPROVAL}，切面据此放行，避免二次提审。

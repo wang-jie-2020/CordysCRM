@@ -3,5 +3,11 @@
   "compilerOptions": {
     "baseUrl": "./",
     "moduleResolution": "node",
-  }
+  },
+  "include": [
+    "./**/*"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }

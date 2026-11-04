@@ -319,6 +319,12 @@ public enum BusinessModuleField {
     /*------ start: ORDER ------*/
     CUSTOM_FORM_DATA_NAME("customFormDataName", "name", Set.of("rules.required", "mobile", "readable"), null),
     CUSTOM_FORM_DATA_OWNER("customFormDataNOwner", "owner", Set.of("rules.required", "mobile", "readable"), null),
+
+    /**
+     * 采购单明细。父字段 id 固定为 lines，子列 id 固定为 qty，条件名就是 lines.qty。
+     */
+    PURCHASE_LINES("purchaseLines", "lines", Set.of("mobile", "readable"), FormKey.PURCHASE.getKey()),
+    PURCHASE_LINE_QTY("purchaseLineQty", "qty", Set.of(), FormKey.PURCHASE.getKey()),
     /*------ end: ORDER ------*/
 
     ;

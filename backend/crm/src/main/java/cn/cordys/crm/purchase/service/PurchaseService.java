@@ -33,12 +33,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.type.TypeReference;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
- * 采购单服务。审批接入的完整样例：业务表 6 列 + handler + 3 个时机的注解。
+ * 采购单服务。审批接入的完整样例：主表字段 + 明细 lines + handler + 3 个时机的注解。
  */
 @Service
 @Transactional(rollbackFor = Exception.class)
@@ -64,6 +66,7 @@ public class PurchaseService implements ApprovalResourceHandler {
         purchase.setUpdateUser(userId);
         purchase.setCreateTime(now);
         purchase.setUpdateTime(now);
+        purchase.setLines(writeLines(request.getLines()));
         purchaseMapper.insert(purchase);
         return purchase;
     }
@@ -85,6 +88,7 @@ public class PurchaseService implements ApprovalResourceHandler {
         purchase.setCreateTime(origin.getCreateTime());
         purchase.setUpdateUser(userId);
         purchase.setUpdateTime(System.currentTimeMillis());
+        purchase.setLines(writeLines(request.getLines()));
         purchaseMapper.updateById(purchase);
         return purchase;
     }
@@ -119,27 +123,46 @@ public class PurchaseService implements ApprovalResourceHandler {
                 .like(Purchase::getName, request.getKeyword())
                 .orderByDesc(Purchase::getCreateTime);
         List<PurchaseGetResponse> rows = purchaseMapper.selectListByLambda(wrapper).stream()
-                .map(purchase -> BeanUtils.copyBean(new PurchaseGetResponse(), purchase))
+                .map(this::toResponse)
                 .toList();
         return PageUtils.setPageInfo(page, rows);
     }
 
     public PurchaseGetResponse getSimple(String id) {
-        Purchase purchase = purchaseMapper.selectByPrimaryKey(id);
-        return purchase == null ? null : BeanUtils.copyBean(new PurchaseGetResponse(), purchase);
+        return toResponse(purchaseMapper.selectByPrimaryKey(id));
     }
 
     public List<PurchaseGetResponse> batchGetSimpleByIds(List<String> ids) {
         if (ids == null || ids.isEmpty()) {
             return Collections.emptyList();
         }
-        return purchaseMapper.selectByIds(ids).stream()
-                .map(purchase -> BeanUtils.copyBean(new PurchaseGetResponse(), purchase))
-                .toList();
+        return purchaseMapper.selectByIds(ids).stream().map(this::toResponse).toList();
+    }
+
+    private PurchaseGetResponse toResponse(Purchase purchase) {
+        if (purchase == null) {
+            return null;
+        }
+        PurchaseGetResponse response = BeanUtils.copyBean(new PurchaseGetResponse(), purchase);
+        response.setLines(readLines(purchase.getLines()));
+        return response;
+    }
+
+    private String writeLines(List<Map<String, Object>> lines) {
+        return lines == null ? null : JSON.toJSONString(lines);
+    }
+
+    /** 表里是 JSON 字符串，详情里要是 List，条件匹配才认 lines.qty。 */
+    private List<Map<String, Object>> readLines(String lines) {
+        if (StringUtils.isBlank(lines)) {
+            return null;
+        }
+        return JSON.parseObject(lines, new TypeReference<List<Map<String, Object>>>() {
+        });
     }
 
     /**
-     * 供引用字段展示用；本实体没有子表字段，与详情一致。
+     * 供引用字段展示用，与详情一致。
      */
     public PurchaseGetResponse getFieldValues(String id) {
         return getSimple(id);
@@ -181,6 +204,7 @@ public class PurchaseService implements ApprovalResourceHandler {
             return null;
         }
         PurchaseUpdateRequest snapshot = BeanUtils.copyBean(new PurchaseUpdateRequest(), purchase);
+        snapshot.setLines(readLines(purchase.getLines()));
         snapshot.setUpdateType(ApprovalResourceUpdateType.APPROVAL.getValue());
         return JSON.toJSONString(snapshot);
     }

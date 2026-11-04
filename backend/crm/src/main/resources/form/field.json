@@ -2549,5 +2549,46 @@
       "mobile": true,
       "format": "11"
     }
+  ],
+  "purchase": [
+    {
+      "id": "lines",
+      "name": "采购明细",
+      "internalKey": "purchaseLines",
+      "type": "SUB_PRODUCT",
+      "showLabel": true,
+      "readable": true,
+      "editable": true,
+      "fieldWidth": 1,
+      "mobile": true,
+      "fixedColumn": 1,
+      "subFields": [
+        {
+          "id": "item",
+          "name": "物料",
+          "internalKey": "purchaseLineItem",
+          "type": "INPUT",
+          "showLabel": true,
+          "readable": true,
+          "editable": true,
+          "fieldWidth": 1,
+          "mobile": true
+        },
+        {
+          "id": "qty",
+          "name": "数量",
+          "internalKey": "purchaseLineQty",
+          "type": "INPUT_NUMBER",
+          "showLabel": true,
+          "readable": true,
+          "editable": true,
+          "fieldWidth": 1,
+          "numberFormat": "number",
+          "decimalPlaces": false,
+          "precision": 0,
+          "mobile": true
+        }
+      ]
+    }
   ]
 }

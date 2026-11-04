@@ -6,6 +6,8 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
 
 @Data
 public class PurchaseAddRequest {
@@ -21,4 +23,7 @@ public class PurchaseAddRequest {
 
     @Schema(description = "金额")
     private BigDecimal amount;
+
+    @Schema(description = "采购明细")
+    private List<Map<String, Object>> lines;
 }

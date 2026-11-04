@@ -91,6 +91,7 @@ public class DataInitService {
             // 更新标记以补齐新增系统标签，新环境仍只执行一次通用初始化。
             initOneTime(moduleFormService::initInternalDetailTabs, "init.clue.transition.detail.tab");
             initOneTime(moduleFormService::initChangeLogTabs, "init.change.log.detail.tab");
+            initOneTime(moduleFormService::initPurchaseLinesField, "init.purchase.lines.field");
         } finally {
             lock.unlock();
         }

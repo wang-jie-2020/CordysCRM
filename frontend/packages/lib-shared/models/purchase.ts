@@ -6,6 +6,7 @@ export interface SavePurchaseParams {
   name: string;
   owner?: string;
   amount?: number | string;
+  lines?: Record<string, any>[];
   moduleFields?: ModuleField[];
 }
 
@@ -21,6 +22,7 @@ export interface PurchaseItem {
   owner: string;
   ownerName?: string;
   amount?: number;
+  lines?: Record<string, any>[];
   approvalStatus: ProcessStatusEnum;
   approved?: boolean;
   organizationId?: string;
